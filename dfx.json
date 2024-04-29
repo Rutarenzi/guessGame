@@ -1,0 +1,23 @@
+{
+    "canisters": {
+        "guess_game": {
+            "type": "custom",
+            "main": "src/app.ts",
+            "candid": "src/app.did",
+            "candid_gen": "http",
+            "build": "npx azle guess_game",
+            "wasm": ".azle/guess_game/guess_game.wasm",
+            "gzip": true,
+            "metadata": [
+                {
+                    "name": "candid:service",
+                    "path": "src/app.did"
+                },
+                {
+                    "name": "cdk:name",
+                    "content": "azle"
+                }
+            ]
+        }
+    }
+}

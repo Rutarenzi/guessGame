@@ -1,0 +1,20 @@
+{
+  "name": "guessgame",
+  "version": "1.0.0",
+  "description": "Internet Computer  number guessing game application",
+  "author": "Rutagarama axcel",
+  "license": "ISC",
+  "dependencies": {
+    "@dfinity/agent": "^1.2.1",
+    "@dfinity/candid": "^1.2.1",
+    "azle": "^0.21.1",
+    "express": "^4.19.2",
+    "uuid": "^9.0.1"
+  },
+  "engines": {
+    "node": "^20"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21"
+  }
+}

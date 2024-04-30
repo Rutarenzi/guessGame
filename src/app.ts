@@ -37,9 +37,58 @@ export default Server(()=>{
     }
     
     // Get available Games
-    app.get('/games',(req:any,res:any)=>{
-        return res.status(200).json(GameStorage.values())
-    })
+    // Routes for managing games
+    app.post('/games', (req, res) => {
+        const { minNumber, maxNumber } = req.body;
+        if (!minNumber || !maxNumber) {
+            return res.status(400).json({ message: 'Please provide both minNumber and maxNumber' });
+        }
+        if (!validateGameBoundaries(minNumber, maxNumber)) {
+            return res.status(400).json({ message: 'Invalid game boundaries! Check game tutorial' });
+        }
+
+        const game = new Game(uuidv4(), minNumber, maxNumber, 1, 0, 0, getCurrentDate(), null);
+        GameStorage.set(game.id, game);
+        res.status(201).json(game);
+    });
+
+    app.get('/games/:id', (req, res) => {
+        const game = GameStorage.get(req.params.id);
+        if (!game) return gameNotFound(res);
+        res.status(200).json(game);
+    });
+
+    app.delete('/games/:id', (req, res) => {
+        const game = GameStorage.get(req.params.id);
+        if (!game) return gameNotFound(res);
+
+        GameStorage.delete(req.params.id);
+        res.status(200).json({ message: 'Game deleted successfully' });
+    });
+
+    app.put('/games/:id/play', (req, res) => {
+        const game = GameStorage.get(req.params.id);
+        if (!game) return gameNotFound(res);
+
+        const guess = req.body.guess;
+        const randomNumber = Math.floor(Math.random() * (game.maxNumber - game.minNumber + 1)) + game.minNumber;
+        let result = 'lose';
+
+        if (guess === randomNumber) {
+            game.points += 5;
+            game.consecutiveLosses = 0;
+            result = 'win';
+        } else {
+            game.consecutiveLosses += 1;
+            if (game.consecutiveLosses >= 3) {
+                GameStorage.delete(req.params.id);
+                return res.status(400).json({ message: "Game terminated due to consecutive losses" });
+            }
+        }
+
+        GameStorage.set(game.id, game);
+        res.status(200).json({ result, totalScore: game.points });
+    });
   
     //  Create new game
     app.post('/games',(req:any, res: any)=>{
@@ -69,28 +118,6 @@ export default Server(()=>{
 
          
     });
-
-    //Get single game
-
-    app.get('/games/:id',(req:any,res:any)=>{
-      
-        const gameId = req.params.id;
-        const gameExist = GameStorage.get(gameId);
-        if('None' in gameExist ){
-            return res.status(404).json({message: 'Game not found'});
-        } 
-        return res.status(200).json(gameExist.Some)
-    })
-    app.delete('/games/:id',(req:any,res:any)=>{
-      
-        const gameId = req.params.id;
-        const gameRemoved = GameStorage.remove(gameId);
-        if('None' in gameRemoved){
-            return res.status(404).json({message: "Game not found to be deleted"})
-        } else{
-            return res.status(200).json(gameRemoved.Some);
-        }
-    })
 
 
     app.put('/games/:id/play',(req:any, res:any)=>{
@@ -160,8 +187,3 @@ export default Server(()=>{
      
         return app.listen();
 })
-
-const getCurrentDate=()=>{
-    const timeStamp = new Number(ic.time());
-    return new Date(timeStamp.valueOf()/1000_000)
-}

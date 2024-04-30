@@ -22,6 +22,19 @@ const GameStorage = StableBTreeMap<string,Game>(0);
 export default Server(()=>{
     const app = express();
     app.use(express.json());
+
+    // Helper Functions
+    function getCurrentDate(): Date {
+        return new Date();
+    }
+
+    function gameNotFound(res: any): any {
+        return res.status(404).json({ message: 'Game not found' });
+    }
+
+    function validateGameBoundaries(minNumber: number, maxNumber: number): boolean {
+        return minNumber >= 0 && maxNumber > minNumber && (maxNumber - minNumber) >= 10;
+    }
     
     // Get available Games
     app.get('/games',(req:any,res:any)=>{

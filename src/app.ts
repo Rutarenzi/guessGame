@@ -1,171 +1,193 @@
-import { 
-    Server,
-    StableBTreeMap, 
-    ic 
-}  from 'azle';
+import {
+  Server,
+  StableBTreeMap,
+  ic,
+} from 'azle';
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 
-class Game  {
-    id: string;
-    minNumber: number;
-    maxNumber: number;
-    level: number;
-    points: number;
-    consecutiveLosses: number;
-    createdAt: Date;
-    updateAt: Date | null;
+/**
+ * Class representing a game.
+ */
+class Game {
+  /**
+   * Create a game.
+   * @param {number} minNumber - The minimum number allowed in the game.
+   * @param {number} maxNumber - The maximum number allowed in the game.
+   * @param {number} [level=1] - The level of the game.
+   * @param {number} [points=0] - The points scored in the game.
+   * @param {number} [consecutiveLosses=0] - The number of consecutive losses in the game.
+   * @param {Date} [createdAt=getCurrentDate()] - The date and time when the game was created.
+   * @param {Date|null} [updatedAt=null] - The date and time when the game was last updated.
+   */
+  constructor(
+    minNumber: number,
+    maxNumber: number,
+    level = 1,
+    points = 0,
+    consecutiveLosses = 0,
+    createdAt = getCurrentDate(),
+    updatedAt = null
+  ) {
+    if (minNumber < 0 || minNumber >= maxNumber || (maxNumber - minNumber) < 10) {
+      throw new Error('Invalid game boundaries! Check game tutorial');
+    }
+
+    this.id = uuidv4();
+    this.minNumber = minNumber;
+    this.maxNumber = maxNumber;
+    this.level = level;
+    this.points = points;
+    this.consecutiveLosses = consecutiveLosses;
+    this.createdAt = createdAt;
+    this.updatedAt = updatedAt;
+  }
 }
 
-const GameStorage = StableBTreeMap<string,Game>(0);
+const GameStorage = StableBTreeMap<string, Game>(0);
 
-export default Server(()=>{
-    const app = express();
-    app.use(express.json());
-    
+/**
+ * Function to get the current date.
+ * @returns {Date} - The current date and time.
+ */
+const getCurrentDate = (): Date => {
+  const timeStamp = new Number(ic.time());
+  return new Date(timeStamp.valueOf() / 1000_000);
+};
 
-    // Helper to check type 
+export default Server(async () => {
+  const app = express();
+  app.use(express.json());
 
-    function checkTypes(obj: any): obj is { minNumber?: number; maxNumber?: number; guess?: number } {
-        return (
-          (obj && typeof obj.minNumber === 'number' && typeof obj.maxNumber === 'number' && typeof obj.guess === 'undefined') ||
-          (obj && typeof obj.guess === 'number' && typeof obj.minNumber === 'undefined' && typeof obj.maxNumber === 'undefined')
-        );
+  /**
+   * Helper function to check types of request body.
+   * @param {Object} obj - The object to be checked.
+   * @returns {boolean} - True if object contains correct types, false otherwise.
+   */
+  function checkTypes(obj: any): obj is { minNumber?: number; maxNumber?: number; guess?: number } {
+    return (
+      (obj && typeof obj.minNumber === 'number' && typeof obj.maxNumber === 'number' && typeof obj.guess === 'undefined') ||
+      (obj && typeof obj.guess === 'number' && typeof obj.minNumber === 'undefined' && typeof obj.maxNumber === 'undefined')
+    );
+  }
+
+  // Get available Games
+  app.get('/games', (req, res) => {
+    return res.status(200).json(Array.from(GameStorage.values()));
+  });
+
+  // Create new game
+  app.post('/games', async (req, res) => {
+    if (!checkTypes(req.body)) {
+      return res.status(400).json({ message: 'Only number allowed' });
+    }
+
+    const { minNumber, maxNumber } = req.body;
+
+    try {
+      const game = new Game(minNumber, maxNumber);
+      await GameStorage.insert(game.id, game);
+      return res.status(201).json(game);
+    } catch (error) {
+      console.error(error); // Log the error for debugging
+      return res.status(400).json({ message: 'Failed to create game' });
+    }
+  });
+
+  // Get single game
+  app.get('/games/:id', (req, res) => {
+    const gameId = req.params.id;
+    const game = GameStorage.get(gameId);
+
+    if (!game) {
+      return res.status(404).json({ message: 'Game not found' });
+    }
+
+    return res.status(200).json(game);
+  });
+
+  // Delete game
+  app.delete('/games/:id', async (req, res) => {
+    const gameId = req.params.id;
+    const removed = await GameStorage.remove(gameId);
+
+    if (!removed) {
+      return res.status(404).json({ message: 'Game not found' });
+    }
+
+    return res.status(200).json({ message: 'Game deleted successfully' });
+  });
+
+  // Play the exact number
+  app.put('/games/:id/play', async (req, res) => {
+    if (!checkTypes(req.body)) {
+      return res.status(400).json({ message: 'Only number allowed' });
+    }
+
+    const gameId = req.params.id;
+    const game = GameStorage.get(gameId);
+
+    if (!game) {
+      return res.status(404).json({ message: 'Game not found' });
+    }
+
+    const { guess } = req.body;
+    const randomNumber = Math.floor(Math.random() * (game.maxNumber - game.minNumber + 1)) + game.minNumber;
+    let result = 'lose';
+
+    if (guess === randomNumber) {
+      result = 'win';
+      game.points += 5;
+      game.consecutiveLosses = 0;
+    } else {
+      game.consecutiveLosses++;
+      if (game.consecutiveLosses >= 3) {
+        await GameStorage.remove(gameId);
+        return res.status(400).json({ message: 'Game terminated due to consecutive losses' });
       }
+    }
 
+    await GameStorage.insert(gameId, game);
+    return res.status(200).json({ result, totalScore: game.points });
+  });
 
-    // Get available Games
-    app.get('/games',(req:any,res:any)=>{
-        return res.status(200).json(GameStorage.values())
-    })
-     
-    //  Create new game
-    app.post('/games',(req:any, res: any)=>{
-        if(!checkTypes(req.body)) return res.status(400).json({message: "only number allowed"});
-    
-        const { minNumber, maxNumber } = req.body;
-        
-          if(minNumber && maxNumber){
-        
-            if((minNumber < 0) || (minNumber >= maxNumber) || ((maxNumber - minNumber) < 10)){
-                return res.status(400).json({message:'Invalid game boundaries!Check game tutorial'}) 
-              }else {
-                 const game :Game= {
-                  id: uuidv4(),
-                  minNumber,
-                  maxNumber,
-                  level: 1,
-                  points: 0,
-                  consecutiveLosses: 0,
-                  createdAt: getCurrentDate(),
-                  updateAt: getCurrentDate()
-              };
-              GameStorage.insert(game.id,game);
-              return  res.status(201).json(game);
-              }
-          }else{
-            return res.status(400).json({message: 'Please provide two number minNumber and maxNumber'})
-          }
+  // Play a number within a range (neighbors)
+  app.post('/games/:id/neighbors', async (req, res) => {
+    if (!checkTypes(req.body)) {
+      return res.status(400).json({ message: 'Only number allowed' });
+    }
 
-         
-    });
+    const gameId = req.params.id;
+    const game = GameStorage.get(gameId);
 
-    //Get single game
+    if (!game) {
+      return res.status(404).json({ message: 'Game not found' });
+    }
 
-    app.get('/games/:id',(req:any,res:any)=>{
-      
-        const gameId = req.params.id;
-        const gameExist = GameStorage.get(gameId);
-        if('None' in gameExist ){
-            return res.status(404).json({message: 'Game not found'});
-        } 
-        return res.status(200).json(gameExist.Some)
-    })
-    app.delete('/games/:id',(req:any,res:any)=>{
-      
-        const gameId = req.params.id;
-        const gameRemoved = GameStorage.remove(gameId);
-        if('None' in gameRemoved){
-            return res.status(404).json({message: "Game not found to be deleted"})
-        } else{
-            return res.status(200).json({message: "Game deleted successfully"});
-        }
-    })
+    const { guess } = req.body;
+    const randomNumber = Math.floor(Math.random() * (game.maxNumber - game.minNumber + 1)) + game.minNumber;
+    let result = 'lose';
+    const borderArray = [];
 
+    for (let i = Math.max(game.minNumber, guess - 2); i <= Math.min(game.maxNumber, guess + 2); i++) {
+      borderArray.push(i);
+    }
 
-    app.put('/games/:id/play',(req:any, res:any)=>{
-        if(!checkTypes(req.body)) return res.status(400).json({message: "only number allowed"});
-        const gameId = req.params.id;
-        const gameExist = GameStorage.get(gameId);
-    
-        if('None' in gameExist ){
-            return res.status(404).json({message: 'Game not found'});
-        } 
+    if (borderArray.includes(randomNumber)) {
+      result = 'win';
+      game.points += 1;
+      game.consecutiveLosses = 0;
+    } else {
+      game.consecutiveLosses++;
+      if (game.consecutiveLosses >= 3) {
+        await GameStorage.remove(gameId);
+        return res.status(400).json({ message: 'Game terminated due to consecutive losses' });
+      }
+    }
 
-        const game= gameExist.Some 
-        const { guess } = req.body;
-        const randomNumber = Math.floor(Math.random()*(game.maxNumber - game.minNumber+1)) + game.minNumber;
-        let result  = "lose";
-        if(guess == randomNumber) {
-            result = 'win';
-            game.points += 5;
-            game.consecutiveLosses = 0;
-               
-        } else {
-            game.consecutiveLosses = game.consecutiveLosses + 1; 
-            if(game.consecutiveLosses >= 3) {
-                GameStorage.remove(gameId);
-                return res.status(400).json({ message: "Game terminated due to consecutive losses"});
-            }
-                
-        
-        GameStorage.insert(gameId,game);
-        return res.status(200).json({ result, totalScore:game.points});
+    await GameStorage.insert(gameId, game);
+    return res.status(200).json({ result, totalScore: game.points, borderArray });
+  });
 
-}});
-
-     // Play number with its either sides two neighbors
-     app.post('/games/:id/neighbors',(req:any, res:any)=>{
-        const gameId = req.params.id;
-        if(!checkTypes(req.body)) return res.status(400).json({message: "only number allowed"});
-        const gameExist = GameStorage.get(gameId);
-        let result = 'lose';
-        const borderArray = [];
-        if('None' in gameExist ){
-            return res.status(404).json({ message: 'Game not found' });
-        } 
-        
-        const { guess } = req.body;
-        const game = gameExist.Some;
-            
-        for(let i = Math.max(game.minNumber, guess-2); i <= Math.min(game.maxNumber,guess+2); i++){
-            borderArray.push(i);              
-        }
-
-        const randomNumber = Math.floor(Math.random() * (game.maxNumber - game.minNumber + 1)) + game.minNumber;
-          
-        if (borderArray.includes(randomNumber)){
-            result = 'win';
-            game.points += 1;
-            game.consecutiveLosses = 0;
-        } else {
-            game.consecutiveLosses++;
-            if (game.consecutiveLosses >= 3) {
-                GameStorage.remove(gameId);
-                return res.status(400).json({ message: 'Game terminated due to consecutive losses' });
-            }
-
-        }
-
-        GameStorage.insert(gameId,game);
-        return res.status(200).json({ result, totalScore:game.points,borderArray});
-     }); 
-     
-     
-        return app.listen();
-})
-
-const getCurrentDate=()=>{
-    const timeStamp = new Number(ic.time());
-    return new Date(timeStamp.valueOf()/1000_000)
-}
+  return app.listen();
+});

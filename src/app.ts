@@ -69,7 +69,36 @@ export default Server(()=>{
 
          
     });
+     app.put('/games/:id/edit',(req:any,res:any)=>{
+        if(!checkTypes(req.body)) return res.status(400).json({message: "only number allowed"});
+        
+        const gameId = req.params.id;
+        const gameExist = GameStorage.get(gameId);
+        if('None' in gameExist ){
+            return res.status(404).json({message: 'Game not found'});
+        } 
+        const { minNumber, maxNumber } = req.body;
+        
+          if(minNumber && maxNumber){
+        
+            if((minNumber < 0) || (minNumber >= maxNumber) || ((maxNumber - minNumber) < 10)){
+                return res.status(400).json({message:'Invalid game boundaries!Check game tutorial'}) 
+              }else {
+               
+              const game:Game = {
+                ...gameExist.Some,
+                minNumber,
+                  maxNumber,
+                  updateAt: getCurrentDate()
 
+              }
+              GameStorage.insert(game.id,game);
+              return  res.status(201).json(game);
+              }
+          }else{
+            return res.status(400).json({message: 'Please provide two number minNumber and maxNumber'})
+          }
+     })
     //Get single game
 
     app.get('/games/:id',(req:any,res:any)=>{
